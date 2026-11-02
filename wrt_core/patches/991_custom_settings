@@ -2,7 +2,7 @@
 
 # 检查当前nf_conntrack_max值是否小于65536，若更小则修改
 current_value=$(sysctl -n net.netfilter.nf_conntrack_max)
-if [ "$current_value" -lt 65535 ]; then
+if [ "$current_value" -lt 65536 ]; then
     # 从sysctl.conf删除旧的nf_conntrack_max配置以避免重复
     sed -i '/nf_conntrack_max/d' /etc/sysctl.conf
     # 写入新配置，设置最大连接数为65535
@@ -17,3 +17,33 @@ if uci show dropbear | grep -q "DirectInterface"; then
     uci commit dropbear
     /etc/init.d/dropbear restart
 fi
+
+# 配置防火墙 docker 区域：转发中添加 lan 和 wan，并接受来自 lan 的转发
+uci set firewall.docker=zone
+uci set firewall.docker.name='docker'
+uci set firewall.docker.input='ACCEPT'
+uci set firewall.docker.output='ACCEPT'
+uci set firewall.docker.forward='ACCEPT'
+uci set firewall.docker.device='docker0'
+uci delete firewall.docker.network 2>/dev/null
+uci add_list firewall.docker.network='docker'
+
+# 清理可能重复的转发规则并添加 docker->wan、docker->lan、lan->docker
+while uci delete firewall.@forwarding[-1] 2>/dev/null; do :; done
+uci set firewall.lan_wan=forwarding
+uci set firewall.lan_wan.src='lan'
+uci set firewall.lan_wan.dest='wan'
+
+uci set firewall.docker_wan=forwarding
+uci set firewall.docker_wan.src='docker'
+uci set firewall.docker_wan.dest='wan'
+
+uci set firewall.docker_lan=forwarding
+uci set firewall.docker_lan.src='docker'
+uci set firewall.docker_lan.dest='lan'
+
+uci set firewall.lan_docker=forwarding
+uci set firewall.lan_docker.src='lan'
+uci set firewall.lan_docker.dest='docker'
+
+uci commit firewall
