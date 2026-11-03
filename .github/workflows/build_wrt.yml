@@ -141,8 +141,8 @@ jobs:
           ADD_CONFIG_FRAGMENTS: ${{ inputs.add_fragments }}
           REMOVE_CONFIG_FRAGMENTS: ${{ inputs.remove_fragments }}
         run: |
-                  ./build.sh ${{ inputs.model }}
-                 for f in ./firmware/*.img.gz; do [ -f "$f" ] && gzip -dk "$f" || true; done
+              ./build.sh ${{ inputs.model }}
+         for f in ./firmware/*.img.gz; do [ -f "$f" ] && gzip -dk "$f" || true; done
 
       - name: Delete Old Cache
         run: |
