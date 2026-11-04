@@ -60,6 +60,7 @@ jobs:
           docker system prune -af || true
           sudo -E apt-get autoremove --purge -y || true
           sudo -E apt-get clean || true
+          sudo rm -rf /opt/hostedtoolcache /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/powershell /usr/share/swift /usr/local/share/boost /opt/az && docker system prune -af --volumes || true
           df -hT
 
       - name: Build System Setup
