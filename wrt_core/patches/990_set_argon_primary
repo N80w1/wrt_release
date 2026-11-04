@@ -337,3 +337,6 @@ GX+6v2WbkzCtTmEcVp6c6GbRqIdwdbrXa43u/781O9m31vqpJwOqWiaCZQ5NrlvregPZH3P92brP6dUB
 EOF_EARTH_XZ
 
 chmod 644 /www/luci-static/argon/background/earth.jpg
+if [ ! -f /usr/lib/ucode/math.so ] && [ -f /usr/share/ucode/luci/template/themes/argon/sysauth.ut ]; then
+	sed -i "/import.*math/d; s/rand()[[:space:]]*%[[:space:]]*length(background)/0/g; s/math\.rand()[[:space:]]*%[[:space:]]*length(background)/0/g" /usr/share/ucode/luci/template/themes/argon/sysauth.ut
+fi
