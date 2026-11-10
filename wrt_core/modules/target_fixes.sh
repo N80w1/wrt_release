@@ -4,12 +4,6 @@
 fix_default_set() {
     local patches_dir="${PATCHES_DIR:-${BASE_PATH:-$SCRIPT_DIR}/patches}"
 
-    # 删除默认密码
-    sed -i "/shadow/d" $(find "$BUILD_DIR/feeds/luci/applications/luci-app-ttyd" "$BUILD_DIR/package/" -type f -name "root" 2>/dev/null)
-
-    # 修改默认主题为argon
-    sed -i "s/luci-theme-bootstrap/luci-theme-$THEME_SET/g" $(find "$BUILD_DIR/feeds/luci/collections/" -type f -name "Makefile" 2>/dev/null)
-
     if [ "$THEME_SET" = "argon" ] && [ -f "$patches_dir/990_set_argon_primary" ]; then
         install -Dm755 "$patches_dir/990_set_argon_primary" "$BUILD_DIR/files/etc/uci-defaults/990_set_argon_primary"
     fi
