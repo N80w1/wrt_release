@@ -58,7 +58,15 @@ fix_kconfig_recursive_dependency() {
             rm -f "$argon_bg_dir"/* 2>/dev/null || true
             \cp -f "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" "$argon_bg_dir/earth.jpg"
         fi
-    fi
+        fi
+          # 强制锁定使用 openwrt-passwall-packages 官方维护的最新稳定版 sing-box (1.14.4)
+             local singbox_mk="$BUILD_DIR/feeds/custom_feed/sing-box/Makefile"
+                 if [ -f "$singbox_mk" ]; then
+                        curl -fsSL "https://raw.githubusercontent.com/Openwrt-Passwall/openwrt-passwall-packages/main/sing-box/Makefile" -o "$singbox_mk" || true
+                                echo "已将 sing-box 切换为 PassWall 官方稳定版: $(grep '^PKG_VERSION:=' "$singbox_mk" 2>/dev/null || true)"
+                                    fi
+                                    
+    
 }
 
 
