@@ -12,5 +12,3 @@ uci -q delete argon.@global[0].online_wallpaper
 uci -q delete argon.@global[0].bing_background
 uci commit argon
 
-rm -f /www/luci-static/argon/background/README* 2>/dev/null || true
-chmod 644 /www/luci-static/argon/background/earth.jpg 2>/dev/null || true
