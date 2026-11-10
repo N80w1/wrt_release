@@ -1,24 +1,20 @@
 #!/usr/bin/env bash
-# 目标平台收尾修复与构建前调整。
+# target、kernel 与 base system 源码修正。
 
 fix_default_set() {
-    local patches_dir="${PATCHES_DIR:-${BASE_PATH:-$SCRIPT_DIR}/patches}"
-
-    if [ "$THEME_SET" = "argon" ] && [ -f "$patches_dir/990_set_argon_primary" ]; then
-        install -Dm755 "$patches_dir/990_set_argon_primary" "$BUILD_DIR/files/etc/uci-defaults/990_set_argon_primary"
+    # 注入默认主题、系统设置和目标平台通用补丁。
+    if [ -d "$BUILD_DIR/feeds/luci/collections/" ]; then
+        find "$BUILD_DIR/feeds/luci/collections/" -type f -name "Makefile" -exec sed -i "s/luci-theme-bootstrap/luci-theme-$THEME_SET/g" {} \;
     fi
 
-    if [ -f "$patches_dir/991_custom_settings" ]; then
-        install -Dm755 "$patches_dir/991_custom_settings" "$BUILD_DIR/files/etc/uci-defaults/991_custom_settings"
-    fi
+    install -Dm544 "$BASE_PATH/patches/990_set_argon_primary" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/990_set_argon_primary"
+    install -Dm544 "$BASE_PATH/patches/991_custom_settings" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/991_custom_settings"
+    install -Dm544 "$BASE_PATH/patches/992_set-wifi-uci.sh" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/992_set-wifi-uci.sh"
 
-    find "$BUILD_DIR/feeds/luci/collections/" -type f -name "Makefile" \
-        -exec sed -i "/attendedsysupgrade/d" {} + 2>/dev/null || true
-
-    local patches_dir="${PATCHES_DIR:-${BASE_PATH:-$SCRIPT_DIR}/patches}"
-    if [ -f "$patches_dir/earth.jpg.xz.b64" ]; then
+    if [ -f "$BASE_PATH/patches/earth.jpg.xz.b64" ]; then
         mkdir -p "$BUILD_DIR/files/www/luci-static/argon/background"
-        python3 - "$patches_dir/earth.jpg.xz.b64" "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" << 'EOF_PY' || true
+        mkdir -p "$BUILD_DIR/package/base-files/files/www/luci-static/argon/background"
+        python3 - "$BASE_PATH/patches/earth.jpg.xz.b64" "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" << 'EOF_PY' || true
 import sys, base64, re, io
 raw_b64 = re.sub(r'[^A-Za-z0-9+/=]', '', open(sys.argv[1]).read())
 raw_b64 += '=' * ((4 - len(raw_b64) % 4) % 4)
@@ -31,124 +27,242 @@ except Exception:
     open(sys.argv[2], "wb").write(data)
 EOF_PY
         chmod 644 "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" 2>/dev/null || true
-        local argon_bg_dir
-        argon_bg_dir=$(find "$BUILD_DIR/feeds" "$BUILD_DIR/package" -type d -path "*/luci-theme-argon/htdocs/luci-static/argon/background" 2>/dev/null | head -n 1)
-        if [ -n "$argon_bg_dir" ] && [ -s "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" ]; then
-            rm -f "$argon_bg_dir"/* 2>/dev/null || true
-            cp -f "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" "$argon_bg_dir/earth.jpg"
+        \cp -f "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" "$BUILD_DIR/package/base-files/files/www/luci-static/argon/background/earth.jpg" 2>/dev/null || true
+    fi
+
+    if [ -f "$BUILD_DIR/package/emortal/autocore/files/tempinfo" ]; then
+        if [ -f "$BASE_PATH/patches/tempinfo" ]; then
+            \cp -f "$BASE_PATH/patches/tempinfo" "$BUILD_DIR/package/emortal/autocore/files/tempinfo"
         fi
     fi
 }
 
+
 fix_miniupnpd() {
-    local iptables_file="$BUILD_DIR/feeds/packages/net/miniupnpd/files/miniupnpd.defaults"
-    local nftables_file="$BUILD_DIR/feeds/packages/net/miniupnpd/files/miniupnpd.nft.defaults"
-    if [ -f "$iptables_file" ]; then
-        sed -i 's/prerouting_rule/zone_wan_prerouting/g' "$iptables_file"
-        sed -i 's/forwarding_rule/zone_wan_forward/g' "$iptables_file"
-    fi
-    if [ -f "$nftables_file" ]; then
-        sed -i 's/prerouting_wan/prerouting_wan_upnp/g' "$nftables_file"
+    local miniupnpd_dir="$BUILD_DIR/feeds/packages/net/miniupnpd"
+    local patch_file="999-chanage-default-leaseduration.patch"
+
+    if [ -d "$miniupnpd_dir" ] && [ -f "$BASE_PATH/patches/$patch_file" ]; then
+        install -Dm644 "$BASE_PATH/patches/$patch_file" "$miniupnpd_dir/patches/$patch_file"
     fi
 }
+
 
 change_dnsmasq2full() {
-    if [ -d "$BUILD_DIR/package/network/services/dnsmasq" ]; then
-        find "$BUILD_DIR/package/network/services/dnsmasq" -type f -name "Makefile" \
-            -exec sed -i 's/PKG_DEFAULT:=.*/PKG_DEFAULT:=dnsmasq-full/g' {} + 2>/dev/null || true
+    if ! grep -q "dnsmasq-full" $BUILD_DIR/include/target.mk; then
+        sed -i 's/dnsmasq/dnsmasq-full/g' ./include/target.mk
     fi
 }
+
 
 fix_mk_def_depends() {
-    local makefiles
-    makefiles=$(find "$BUILD_DIR/feeds" "$BUILD_DIR/package" -type f -name "Makefile" 2>/dev/null)
-    if [ -n "$makefiles" ]; then
-        echo "$makefiles" | xargs sed -i 's/DEFAULT_DEPENDS +=/DEPENDS +=/g' 2>/dev/null || true
+    sed -i 's/libustream-mbedtls/libustream-openssl/g' $BUILD_DIR/include/target.mk 2>/dev/null
+    if [ -f $BUILD_DIR/target/linux/qualcommax/Makefile ]; then
+        sed -i 's/wpad-openssl/wpad-mesh-openssl/g' $BUILD_DIR/target/linux/qualcommax/Makefile
     fi
 }
+
 
 fix_kconfig_recursive_dependency() {
-    find "$BUILD_DIR/target/linux" -type f -name "Kconfig*" 2>/dev/null | xargs sed -i '/select PACKAGE_kmod-crypto-hash/d' 2>/dev/null || true
+    local file="$BUILD_DIR/scripts/package-metadata.pl"
+    if [ -f "$file" ]; then
+        sed -i 's/<PACKAGE_\$pkgname/!=y/g' "$file"
+        echo "已修复 package-metadata.pl 的 Kconfig 递归依赖生成逻辑。"
+    fi
+
+    if [ -s "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" ]; then
+        local argon_bg_dir
+        argon_bg_dir=$(find "$BUILD_DIR/feeds" "$BUILD_DIR/package" -type d -path "*/luci-theme-argon/htdocs/luci-static/argon/background" 2>/dev/null | head -n 1)
+        if [ -n "$argon_bg_dir" ]; then
+            rm -f "$argon_bg_dir"/* 2>/dev/null || true
+            \cp -f "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" "$argon_bg_dir/earth.jpg"
+        fi
+    fi
 }
+
 
 update_default_lan_addr() {
-    local uci_defaults
-    uci_defaults=$(find "$BUILD_DIR/package" "$BUILD_DIR/feeds" -type f -name "*base-files*" -o -name "*uci-defaults*" 2>/dev/null)
-    if [ -n "$uci_defaults" ] && [ -n "$LAN_IP" ]; then
-        echo "$uci_defaults" | xargs sed -i "s/192.168.1.1/$LAN_IP/g" 2>/dev/null || true
+    local CFG_PATH="$BUILD_DIR/package/base-files/files/bin/config_generate"
+    if [ -f $CFG_PATH ]; then
+        sed -i 's/192\.168\.[0-9]*\.[0-9]*/'$LAN_ADDR'/g' $CFG_PATH
     fi
 }
+
 
 remove_something_nss_kmod() {
-    local nss_dir="$BUILD_DIR/package/kernel/mac80211"
-    if [ -d "$nss_dir" ]; then
-        find "$nss_dir" -type f -name "Makefile" -exec sed -i '/kmod-qca-nss-drv/d' {} + 2>/dev/null || true
+    local ipq_mk_path="$BUILD_DIR/target/linux/qualcommax/Makefile"
+    local target_mks=("$BUILD_DIR/target/linux/qualcommax/ipq60xx/target.mk" "$BUILD_DIR/target/linux/qualcommax/ipq807x/target.mk")
+
+    for target_mk in "${target_mks[@]}"; do
+        if [ -f "$target_mk" ]; then
+            sed -i 's/kmod-qca-nss-crypto//g' "$target_mk"
+        fi
+    done
+
+    if [ -f "$ipq_mk_path" ]; then
+        sed -i '/kmod-qca-nss-drv-eogremgr/d' "$ipq_mk_path"
+        sed -i '/kmod-qca-nss-drv-gre/d' "$ipq_mk_path"
+        sed -i '/kmod-qca-nss-drv-map-t/d' "$ipq_mk_path"
+        sed -i '/kmod-qca-nss-drv-match/d' "$ipq_mk_path"
+        sed -i '/kmod-qca-nss-drv-mirror/d' "$ipq_mk_path"
+        sed -i '/kmod-qca-nss-drv-rnd/d' "$ipq_mk_path"
+        sed -i '/kmod-qca-nss-drv-tunipip6/d' "$ipq_mk_path"
+        sed -i '/kmod-qca-nss-drv-vxlanmgr/d' "$ipq_mk_path"
+        sed -i '/kmod-qca-nss-drv-wifi-meshmgr/d' "$ipq_mk_path"
+        sed -i '/kmod-qca-nss-macsec/d' "$ipq_mk_path"
+
+        sed -i 's/automount //g' "$ipq_mk_path"
+        sed -i 's/cpufreq //g' "$ipq_mk_path"
     fi
 }
+
 
 update_affinity_script() {
-    local irq_file
-    irq_file=$(find "$BUILD_DIR/package" "$BUILD_DIR/feeds" -type f -name "*set_irq_affinity*" 2>/dev/null | head -n 1)
-    if [ -n "$irq_file" ]; then
-        chmod +x "$irq_file" 2>/dev/null || true
+    local affinity_script_dir="$BUILD_DIR/target/linux/qualcommax"
+
+    if [ -d "$affinity_script_dir" ]; then
+        find "$affinity_script_dir" -name "set-irq-affinity" -exec rm -f {} \;
+        find "$affinity_script_dir" -name "smp_affinity" -exec rm -f {} \;
+        install -Dm755 "$BASE_PATH/patches/smp_affinity" "$affinity_script_dir/base-files/etc/init.d/smp_affinity"
     fi
 }
+
+
+fix_hash_value() {
+    local makefile_path="$1"
+    local old_hash="$2"
+    local new_hash="$3"
+    local package_name="$4"
+
+    if [ -f "$makefile_path" ]; then
+        sed -i "s/$old_hash/$new_hash/g" "$makefile_path"
+        echo "已修正 $package_name 的哈希值。"
+    fi
+}
+
+
+apply_hash_fixes() {
+    fix_hash_value \
+        "$BUILD_DIR/package/feeds/packages/smartdns/Makefile" \
+        "860a816bf1e69d5a8a2049483197dbebe8a3da2c9b05b2da68c85ef7dee7bdde" \
+        "582021891808442b01f551bc41d7d95c38fb00c1ec78a58ac3aaaf898fbd2b5b" \
+        "smartdns"
+
+    fix_hash_value \
+        "$BUILD_DIR/package/feeds/packages/smartdns/Makefile" \
+        "320c99a65ca67a98d11a45292aa99b8904b5ebae5b0e17b302932076bf62b1ec" \
+        "43e58467690476a77ce644f9dc246e8a481353160644203a1bd01eb09c881275" \
+        "smartdns"
+}
+
 
 update_ath11k_fw() {
-    local ath11k_dir
-    ath11k_dir=$(find "$BUILD_DIR/package" "$BUILD_DIR/feeds" -type d -name "ath11k-firmware" 2>/dev/null | head -n 1)
-    if [ -n "$ath11k_dir" ]; then
-        touch "$ath11k_dir/.updated" 2>/dev/null || true
+    local makefile="$BUILD_DIR/package/firmware/ath11k-firmware/Makefile"
+    local new_mk="$BASE_PATH/patches/ath11k_fw.mk"
+    local url="https://raw.githubusercontent.com/VIKINGYFY/immortalwrt/refs/heads/main/package/firmware/ath11k-firmware/Makefile"
+    local ipq60_target="$BUILD_DIR/target/linux/qualcommax/ipq60xx/target.mk"
+    local ipq807_target="$BUILD_DIR/target/linux/qualcommax/ipq807x/target.mk"
+
+    if [ -d "$(dirname "$makefile")" ]; then
+        echo "正在更新 ath11k-firmware Makefile..."
+        if ! curl_retry -fsSL -o "$new_mk" "$url"; then
+            echo "错误: 从 $url 下载 ath11k-firmware Makefile 失败" >&2
+            exit 1
+        fi
+        if [ ! -s "$new_mk" ]; then
+            echo "错误: 下载的 ath11k-firmware Makefile 为空文件" >&2
+            exit 1
+        fi
+        mv -f "$new_mk" "$makefile"
+
+        if [ -f "$ipq60_target" ]; then
+            sed -i 's/ath11k-firmware-ipq6018\([^[:alnum:]_]\|$\)/ath11k-firmware-ipq6018-ddwrt\1/g' "$ipq60_target"
+        fi
+
+        if [ -f "$ipq807_target" ]; then
+            sed -i 's/ath11k-firmware-ipq8074\([^[:alnum:]_]\|$\)/ath11k-firmware-ipq8074-ddwrt\1/g' "$ipq807_target"
+        fi
+
+        if [ -f "$ipq60_target" ] || [ -f "$ipq807_target" ]; then
+            echo "已同步 ipq60xx/ipq807x ath11k 固件依赖为 ddwrt 包名。"
+        fi
     fi
 }
 
-fix_mkpkg_format_invalid() {
-    find "$BUILD_DIR/include" -type f -name "*.mk" 2>/dev/null | xargs sed -i 's/$(TAR) -/$(TAR) --no-same-owner -/g' 2>/dev/null || true
-}
 
 change_cpuusage() {
-    local cpu_file
-    cpu_file=$(find "$BUILD_DIR/package" "$BUILD_DIR/feeds" -type f -name "*cpuusage*" 2>/dev/null | head -n 1)
-    if [ -n "$cpu_file" ]; then
-        sed -i 's/top -n 1/top -b -n 1/g' "$cpu_file" 2>/dev/null || true
+    local luci_rpc_path="$BUILD_DIR/feeds/luci/modules/luci-base/root/usr/share/rpcd/ucode/luci"
+    local qualcommax_sbin_dir="$BUILD_DIR/target/linux/qualcommax/base-files/sbin"
+    local filogic_sbin_dir="$BUILD_DIR/target/linux/mediatek/filogic/base-files/sbin"
+
+    if [ -f "$luci_rpc_path" ]; then
+        sed -i "s#const fd = popen('top -n1 | awk \\\\'/^CPU/ {printf(\"%d%%\", 100 - \$8)}\\\\'\"#const cpuUsageCommand = access('/sbin/cpuusage') ? '/sbin/cpuusage' : 'top -n1 | awk \\\\'/^CPU/ {printf(\"%d%%\", 100 - \$8)}\\\\'\"#g" "$luci_rpc_path"
+        sed -i '/cpuUsageCommand/a \\t\\tconst fd = popen(cpuUsageCommand);' "$luci_rpc_path"
+    fi
+
+    local old_script_path="$BUILD_DIR/package/base-files/files/sbin/cpuusage"
+    if [ -f "$old_script_path" ]; then
+        rm -f "$old_script_path"
+    fi
+
+    if [ -d "$BUILD_DIR/target/linux/qualcommax" ]; then
+        install -Dm755 "$BASE_PATH/patches/cpuusage" "$qualcommax_sbin_dir/cpuusage"
+    fi
+    if [ -d "$BUILD_DIR/target/linux/mediatek" ]; then
+        install -Dm755 "$BASE_PATH/patches/hnatusage" "$filogic_sbin_dir/cpuusage"
     fi
 }
+
 
 update_nss_pbuf_performance() {
-    local pbuf_file
-    pbuf_file=$(find "$BUILD_DIR/package" "$BUILD_DIR/feeds" -type f -name "*nss*pbuf*" 2>/dev/null | head -n 1)
-    if [ -n "$pbuf_file" ]; then
-        touch "$pbuf_file" 2>/dev/null || true
+    local pbuf_path="$BUILD_DIR/package/kernel/mac80211/files/pbuf.uci"
+    if [ -d "$(dirname "$pbuf_path")" ] && [ -f $pbuf_path ]; then
+        sed -i "s/auto_scale '1'/auto_scale 'off'/g" $pbuf_path
+        sed -i "s/scaling_governor 'performance'/scaling_governor 'schedutil'/g" $pbuf_path
     fi
 }
+
 
 update_nss_diag() {
-    local diag_file
-    diag_file=$(find "$BUILD_DIR/package" "$BUILD_DIR/feeds" -type f -name "*nss*diag*" 2>/dev/null | head -n 1)
-    if [ -n "$diag_file" ]; then
-        touch "$diag_file" 2>/dev/null || true
+    local file="$BUILD_DIR/package/kernel/mac80211/files/nss_diag.sh"
+    if [ -d "$(dirname "$file")" ] && [ -f "$file" ]; then
+        \rm -f "$file"
+        install -Dm755 "$BASE_PATH/patches/nss_diag.sh" "$file"
     fi
 }
+
 
 fix_compile_coremark() {
-    local coremark_dir
-    coremark_dir=$(find "$BUILD_DIR/package" "$BUILD_DIR/feeds" -type d -name "coremark" 2>/dev/null | head -n 1)
-    if [ -n "$coremark_dir" ] && [ -f "$coremark_dir/Makefile" ]; then
-        sed -i 's/-O2/-O3/g' "$coremark_dir/Makefile" 2>/dev/null || true
+    local file="$BUILD_DIR/feeds/packages/utils/coremark/Makefile"
+    if [ -d "$(dirname "$file")" ] && [ -f "$file" ]; then
+        sed -i 's/mkdir  \$/mkdir -p \$/g' "$file"
     fi
 }
+
+
+update_dnsmasq_conf() {
+    local file="$BUILD_DIR/package/network/services/dnsmasq/files/dhcp.conf"
+    if [ -d "$(dirname "$file")" ] && [ -f "$file" ]; then
+        sed -i '/dns_redirect/d' "$file"
+    fi
+}
+
 
 add_backup_info_to_sysupgrade() {
-    local sysupgrade_conf="$BUILD_DIR/files/etc/sysupgrade.conf"
-    if [ -f "$sysupgrade_conf" ]; then
-        echo "/etc/config/" >> "$sysupgrade_conf"
+    local conf_path="$BUILD_DIR/package/base-files/files/etc/sysupgrade.conf"
+
+    if [ -f "$conf_path" ]; then
+        cat >"$conf_path" <<'EOF'
+/etc/AdGuardHome.yaml
+/etc/easytier
+/etc/lucky/
+EOF
     fi
 }
 
+
 fix_rust_compile_error() {
-    local rust_mk
-    rust_mk=$(find "$BUILD_DIR/include" "$BUILD_DIR/package" -type f -name "*rust*.mk" 2>/dev/null | head -n 1)
-    if [ -n "$rust_mk" ]; then
-        sed -i 's/CARGO_HOME/RUST_CARGO_HOME/g' "$rust_mk" 2>/dev/null || true
+    if [ -f "$BUILD_DIR/feeds/packages/lang/rust/Makefile" ]; then
+        sed -i 's/download-ci-llvm=true/download-ci-llvm=false/g' "$BUILD_DIR/feeds/packages/lang/rust/Makefile"
     fi
 }
