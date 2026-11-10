@@ -11,26 +11,7 @@ fix_default_set() {
     install -Dm544 "$BASE_PATH/patches/991_custom_settings" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/991_custom_settings"
     install -Dm544 "$BASE_PATH/patches/992_set-wifi-uci.sh" "$BUILD_DIR/package/base-files/files/etc/uci-defaults/992_set-wifi-uci.sh"
 
-    if [ -f "$BASE_PATH/patches/earth.jpg.xz.b64" ]; then
-        mkdir -p "$BUILD_DIR/files/www/luci-static/argon/background"
-        mkdir -p "$BUILD_DIR/package/base-files/files/www/luci-static/argon/background"
-        python3 - "$BASE_PATH/patches/earth.jpg.xz.b64" "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" << 'EOF_PY' || true
-import sys, base64, re, io
-raw_b64 = re.sub(r'[^A-Za-z0-9+/=]', '', open(sys.argv[1]).read())
-raw_b64 += '=' * ((4 - len(raw_b64) % 4) % 4)
-data = base64.b64decode(raw_b64)
-try:
-    from PIL import Image
-    im = Image.open(io.BytesIO(data)).convert("RGB")
-    im.save(sys.argv[2], format="JPEG", quality=90)
-except Exception:
-    open(sys.argv[2], "wb").write(data)
-EOF_PY
-        chmod 644 "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" 2>/dev/null || true
-        \cp -f "$BUILD_DIR/files/www/luci-static/argon/background/earth.jpg" "$BUILD_DIR/package/base-files/files/www/luci-static/argon/background/earth.jpg" 2>/dev/null || true
-    fi
-
-    if [ -f "$BUILD_DIR/package/emortal/autocore/files/tempinfo" ]; then
+      if [ -f "$BUILD_DIR/package/emortal/autocore/files/tempinfo" ]; then
         if [ -f "$BASE_PATH/patches/tempinfo" ]; then
             \cp -f "$BASE_PATH/patches/tempinfo" "$BUILD_DIR/package/emortal/autocore/files/tempinfo"
         fi
